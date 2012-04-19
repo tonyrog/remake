@@ -1,0 +1,142 @@
+#!/usr/bin/env escript
+%% -*- erlang -*-
+%%% @author Tony Rogvall <tony@rogvall.se>
+%%% @copyright (C) 2012, Tony Rogvall
+%%% @doc
+%%%    run either make or rebar and tranlate output to make it
+%%%    relative to current directory
+%%% @end
+%%% Created : 19 Apr 2012 by Tony Rogvall <tony@rogvall.se>
+
+-mode(compile).
+
+%% find either Makefile/makefile or rebar.config upwards from current
+%% directory.
+%% if Makefile/makefile is found then "make" is called
+%% if rebar.config is found then "rebar compile" is called
+%%
+-spec main(Args::[string()]) -> term().
+
+main([File]) ->
+    case filename:extension(File) of
+	".c" ->
+	    make_cmd("gcc", ["-o", filename:basename(File, ".c"),File]);
+	".cc" ->
+	    make_cmd("gcc", ["-o", filename:basename(File, ".cc"),File]);
+	".erl" ->
+	    make_cmd("erlc", [File]);
+	_ ->
+	    make([File])
+    end;
+main(Args) ->
+    make(Args).
+
+make(Args) ->
+    {ok,Dir0} = file:get_cwd(),
+    Roots = [os:getenv("HOME"), "/"],
+    case find_first(Dir0, Roots,
+		    [{make,"Makefile"},
+		     {make,"makefile"},
+		     {rebar,"rebar.config"}]) of
+	false ->
+	    io:format("nothing to remake\n"),
+	    halt(0);
+	{rebar, Dir1} ->
+	    Env = [{"LANG", "C"}],
+	    Args1 = if Args =:= [] ->
+			    ["compile"];
+		       true ->
+			    Args
+		    end,
+	    run(Dir1, reldir(Dir0, Dir1), "rebar", Args1, Env);
+	{make, Dir1} ->
+	    Env = [{"LANG", "C"}],
+	    run(Dir1, reldir(Dir0, Dir1), "make", Args, Env)
+    end.
+
+
+make_cmd(Command, Args) ->
+    {ok,Dir0} = file:get_cwd(),
+    Env = [{"LANG", "C"}],
+    run(Dir0, <<".">>, Command, Args, Env).
+
+
+run(Dir, Dots, Command, Args, Env) ->
+    %% io:format("# run '~s' in directory ~s: rel=~s, env=~p\n", 
+    %% [[Command,lists:map(fun(A) -> [" ",A] end,Args)],
+    %% Dir, Dots, Env]),
+    case os:find_executable(Command) of
+	false ->
+	    io:format("remake: '~s' no such command\n", [Command]),
+	    halt(1);
+	Exec ->
+	    Port = open_port({spawn_executable, Exec},
+			     [{args, Args},{cd,Dir}, binary,
+			      {env, Env}, {line, 1024},
+			      stderr_to_stdout, exit_status]),
+	    run_result(Dots,<<"">>,Port)
+    end.
+
+run_result(Dots,Rep,Port) ->
+    receive
+	{Port, {exit_status,Status}} ->
+	    %% io:format("Port exit status = ~p\n", [Status]),
+	    halt(Status);
+	{Port, {data,{Eol, Data}}} when Eol =:= eol; Eol =:= noeol ->
+	    if Dots =:= <<".">> ->
+		    io:put_chars([Data,"\n"]),
+		    run_result(Dots,Rep,Port); 
+	       true ->
+		    %% fixme: this wont work for broken last line
+		    Data1 = re:replace(Data,"([\\w/.]+):(\\d+):", 
+				       <<Dots/binary, "/\\1:\\2:">>,
+				       [global]),
+		    io:put_chars([Data1,"\n"]),
+		    run_result(Dots,Rep,Port)
+	    end;
+	Other ->
+	    io:format("remake for other: ~p\n", [Other]),
+	    run_result(Dots,Rep,Port)
+    end.
+
+%% Dir0 is current directory while Dir1 must be a parent diretory
+%% return the realative directory name or false if not a parent.
+-spec reldir(string(), string()) -> binary().
+reldir(Dir0, Dir0) ->
+    <<".">>;
+reldir(Dir0, Dir1) ->
+    case lists:prefix(Dir1, Dir0) of
+	true ->
+	    %% produce needed amount of ".."
+	    Dir2 = lists:nthtail(length(Dir1)+1, Dir0),
+	    N = length(filename:split(Dir2)),
+	    list_to_binary(filename:join(lists:duplicate(N, "..")));
+	false ->
+	    <<".">>
+    end.
+
+
+find_first(Dir, Roots, List) ->
+    case find_item(Dir, List) of
+	false ->
+	    Parent = filename:dirname(Dir),
+	    case lists:member(Parent, Roots) of
+		true -> false;
+		false -> find_first(Parent, Roots, List)
+	    end;
+	Item ->
+	    Item
+    end.
+
+find_item(Dir, [{W,File}|Fs]) ->
+    case filelib:is_regular(filename:join(Dir, File)) of
+	true ->
+	    {W,Dir};
+	false ->
+	    find_item(Dir, Fs)
+    end;
+find_item(_Dir, []) ->
+    false.
+
+		    
+
