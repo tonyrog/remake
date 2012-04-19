@@ -11,7 +11,7 @@ by search starting from current directory and upwards to the root directory,
 not including root it self.
 
 The output from remake is translated in away that make filenames
-be realtive current directory, makeing remake ideal to be used
+be relative current directory, making remake ideal to be used
 from emacs.
 
 Clone remake.git anywhere and make sure remake can be found in PATH.
