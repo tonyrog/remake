@@ -14,6 +14,7 @@ The output from remake is translated in away that make filenames
 be realtive current directory, makeing remake ideal to be used
 from emacs.
 
+Clone remake.git anywhere and make sure remake can be found in PATH.
 
 In .emacs add this line to make remake the default make command
 
