@@ -16,9 +16,11 @@ from emacs.
 
 Clone remake.git anywhere and make sure remake can be found in PATH.
 
-In .emacs add this line to make remake the default make command
+In .emacs, add this line to make remake the default 'compile command
 
     (setq compile-command "remake")
+
+(remake has no connection to the erlang-mode what so ever)
 
 Features
 ========
