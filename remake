@@ -34,10 +34,13 @@ main(Args) ->
 make(Args) ->
     {ok,Dir0} = file:get_cwd(),
     Roots = [os:getenv("HOME"), "/"],
+    %% Maybe change this to first find rebar up the tree,
+    %% then if fail start looking for makefiles?
     case find_first(Dir0, Roots,
-		    [{make,"Makefile"},
-		     {make,"makefile"},
-		     {rebar,"rebar.config"}]) of
+		    [{rebar,"rebar.config"},
+		     {make,"Makefile"},
+		     {make,"makefile"}
+		    ]) of
 	false ->
 	    io:format("nothing to remake\n"),
 	    halt(0);
@@ -137,6 +140,3 @@ find_item(Dir, [{W,File}|Fs]) ->
     end;
 find_item(_Dir, []) ->
     false.
-
-		    
-
