@@ -10,6 +10,9 @@
 
 -mode(compile).
 
+%% -define(dbg(F,A), io:format((F),(A))).
+-define(dbg(F,A), ok).
+
 %% find either Makefile/makefile or rebar.config upwards from current
 %% directory.
 %% if Makefile/makefile is found then "make" is called
@@ -46,12 +49,14 @@ make(Args) ->
 	    halt(0);
 	{rebar, Dir1} ->
 	    Env = [{"LANG", "C"}],
-	    Args1 = if Args =:= [] ->
-			    ["compile"];
-		       true ->
-			    Args
-		    end,
-	    run(Dir1, reldir(Dir0, Dir1), "rebar", Args1, Env);
+	    case Args of
+		[] ->
+		    run(Dir1, reldir(Dir0, Dir1), "rebar", ["compile"], Env);
+		["pull"] ->
+		    pull(Dir1);
+		_ ->
+		    run(Dir1, reldir(Dir0, Dir1), "rebar", Args, Env)
+	    end;
 	{make, Dir1} ->
 	    Env = [{"LANG", "C"}],
 	    run(Dir1, reldir(Dir0, Dir1), "make", Args, Env)
@@ -62,6 +67,124 @@ make_cmd(Command, Args) ->
     {ok,Dir0} = file:get_cwd(),
     Env = [{"LANG", "C"}],
     run(Dir0, <<".">>, Command, Args, Env).
+
+%% recursivly do a git pull in dependencies found
+
+pull(Dir) ->
+    {ok,Dir0} = file:get_cwd(),
+    file:set_cwd(Dir),
+    try pull("", dict:new()) of
+	Pulled ->
+	    io:format("~w repo's pulled\n", [dict:size(Pulled)])
+    catch
+	error:Reason ->
+	    io:format("pull crashed ~p\n~p\n", 
+		      [Reason, erlang:get_stacktrace()]),
+	    {error,Reason}
+    after
+	file:set_cwd(Dir0)
+    end.
+
+%% pull rebar.config deps from current directory	
+pull(DepsDir0, Pulled) ->
+    case file:consult("rebar.config") of
+	{ok,RebarOpts} ->
+	    case lists:keyfind(deps, 1, RebarOpts) of
+		false ->
+		    Pulled;
+		{deps,Deps} ->
+		    RebarDepsDir = deps_dir(RebarOpts,DepsDir0),
+		    pull_deps(Deps, RebarDepsDir, Pulled)
+	    end;
+	{error,enoent} -> %% not a rebar project?
+	    Pulled;
+	_Error ->
+	    {ok,Dir} = file:get_cwd(),
+	    io:format("remake: consult error ~p in dir ~s\n", [_Error, Dir]),
+	    Pulled
+    end.
+
+pull_deps([Dep|Deps], RebarDepsDir, Pulled) ->
+    Pulled1 = pulldep(Dep, RebarDepsDir, Pulled),
+    pull_deps(Deps, RebarDepsDir, Pulled1);
+pull_deps([], _RebarDepsDir, Pulled) ->
+    Pulled.
+
+pulldep(App, _RebarDepsDir, Pulled) when is_atom(App) ->
+    Pulled;
+pulldep({App,_Version}, _RebarDepsDir, Pulled) when is_atom(App) ->
+    Pulled;
+pulldep({App,_Version,Repo}, RebarDepsDir, Pulled) 
+  when is_atom(App) ->
+    pulldep_repo(App, Repo, RebarDepsDir, Pulled);
+pulldep({App,_Version,Repo,_Opts}, RebarDepsDir, Pulled) 
+  when is_atom(App) ->
+    pulldep_repo(App, Repo, RebarDepsDir, Pulled);
+pulldep(_Dep, _RebarDepdsDir, Pulled) ->
+    io:format("dependency ~p not understood\n", [_Dep]),
+    Pulled.
+
+pulldep_repo(App, Repo, DepsDir, Pulled) ->
+    case dict:find(App, Pulled) of
+	{ok,_Dir} ->
+	    ?dbg("repo ~s@~s already pulled\n", [App,_Dir]),
+	    Pulled;
+	error ->
+	    Dir = filename:join(DepsDir, App),
+	    case filelib:is_dir(Dir) of
+		true ->
+		    io:format("pulling repo ~s@~s\n", [App,Dir]),
+		    file:set_cwd(Dir),
+		    pull_repo(App, Repo),  %% try pull
+		    Pulled1 = dict:store(App,Dir,Pulled),
+		    pull(DepsDir, Pulled1); %% now pull recursive
+		false ->  %% not cloned/get-deps?
+		    Pulled
+	    end
+    end.
+
+pull_repo(App, {git, _Url, BranchTag}) ->
+    pull_git(App, _Url, BranchTag);
+pull_repo(App, {git, _Url}) ->
+    pull_git(App, _Url, {branch,"HEAD"});
+pull_repo(App, Repo) ->
+    io:format("can not pull none git yet ~s - ~p\n", [App,Repo]),
+    ok.
+
+%% Just do a simple git pull for now! 
+%% this may not work with get-deps?
+pull_git(App, Url, {branch,Branch}) ->
+    Res = os:cmd("git pull -q origin " ++ Branch),
+    case Res of
+	"Already up-to-date.\n" -> ok;
+	"" -> ok;
+	Info ->
+	    io:format("repo ~s ~s\n~s\n", [App, Url, Info]),
+	    ok
+    end;
+pull_git(App, Url, TagRev) ->
+    %% unless someone moved the tag we do not need to pull re-fetch
+    io:format("not pulling tags yet, ~s ~p / ~p\n", [App,Url,TagRev]),
+    ok.
+
+    
+%% Get the deps dir relative current directory
+deps_dir(RebarOpts,"") ->
+    case lists:keyfind(deps_dir, 1, RebarOpts) of
+	false ->
+	    DepsDir = os:getenv("REBAR_DEPS_DIR"),
+	    if DepsDir =:= ""; DepsDir =:= false ->
+		    {ok,Dir} = file:get_cwd(),
+		    filename:join(Dir, "deps");
+	       true ->
+		    DepsDir
+	    end;
+	{deps_dir, Dir1} ->
+	    {ok,Dir} = file:get_cwd(),
+	    filename:join(Dir, Dir1)
+    end;
+deps_dir(_RebarOpts, RebarDepsDir) ->
+    RebarDepsDir.
 
 
 run(Dir, Dots, Command, Args, Env) ->
