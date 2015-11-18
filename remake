@@ -73,6 +73,8 @@ make_cmd(Command, Args) ->
 pull(Dir) ->
     {ok,Dir0} = file:get_cwd(),
     file:set_cwd(Dir),
+    %% pull current repo first
+    pull_git(filename:basename(Dir), "current", {branch,"HEAD"}),
     try pull("", dict:new()) of
 	Pulled ->
 	    io:format("~w repo's pulled\n", [dict:size(Pulled)])
@@ -200,10 +202,10 @@ run(Dir, Dots, Command, Args, Env) ->
 			     [{args, Args},{cd,Dir}, binary,
 			      {env, Env}, {line, 1024},
 			      stderr_to_stdout, exit_status]),
-	    run_result(Dots,<<"">>,Port)
+	    run_result(Dots,Port)
     end.
 
-run_result(Dots,Rep,Port) ->
+run_result(Dots,Port) ->
     receive
 	{Port, {exit_status,Status}} ->
 	    %% io:format("Port exit status = ~p\n", [Status]),
@@ -211,18 +213,26 @@ run_result(Dots,Rep,Port) ->
 	{Port, {data,{Eol, Data}}} when Eol =:= eol; Eol =:= noeol ->
 	    if Dots =:= <<".">> ->
 		    io:put_chars([Data,"\n"]),
-		    run_result(Dots,Rep,Port); 
+		    run_result(Dots,Port);
 	       true ->
+		    case Data of
+			<<$/,_>> ->
+			    io:put_chars([Data,"\n"]),
+			    run_result(Dots,Port);
+			_ ->
+			    io:put_chars([Dots,"/",Data,"\n"]),
+			    run_result(Dots,Port)
+		    end
+		    %% io:format("result: [~s] dots=~p\n", [Data, Dots]),
 		    %% fixme: this wont work for broken last line
-		    Data1 = re:replace(Data,"([\\w/.]+):(\\d+):", 
-				       <<Dots/binary, "/\\1:\\2:">>,
-				       [global]),
-		    io:put_chars([Data1,"\n"]),
-		    run_result(Dots,Rep,Port)
+		    %% Data1 = re:replace(Data,"([\\w/.]+):(\\d+):", 
+		    %%		    %% <<Dots/binary, "/\\1:\\2:">>,
+		    %%  [global]),
+		    %% io:put_chars([Data1,"\n"])
 	    end;
 	Other ->
 	    io:format("remake for other: ~p\n", [Other]),
-	    run_result(Dots,Rep,Port)
+	    run_result(Dots,Port)
     end.
 
 %% Dir0 is current directory while Dir1 must be a parent diretory
