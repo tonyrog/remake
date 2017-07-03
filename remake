@@ -135,7 +135,7 @@ pulldep_repo(App, Repo, DepsDir, Pulled) ->
 	    Dir = filename:join(DepsDir, App),
 	    case filelib:is_dir(Dir) of
 		true ->
-		    io:format("pulling repo ~s@~s\n", [App,Dir]),
+		    %% io:format("pulling repo ~s@~s\n", [App,Dir]),
 		    file:set_cwd(Dir),
 		    pull_repo(App, Repo),  %% try pull
 		    Pulled1 = dict:store(App,Dir,Pulled),
@@ -156,19 +156,26 @@ pull_repo(App, Repo) ->
 %% Just do a simple git pull for now! 
 %% this may not work with get-deps?
 pull_git(App, Url, {branch,Branch}) ->
-    Res = os:cmd("git pull -q origin " ++ Branch),
-    case Res of
-	"Already up-to-date.\n" -> ok;
-	"" -> ok;
-	Info ->
-	    io:format("repo ~s ~s\n~s\n", [App, Url, Info]),
-	    ok
-    end;
-pull_git(App, Url, TagRev) ->
+    Res = os:cmd("git pull -q origin --tags " ++ Branch),
+    result(Res, App, Url, Branch),
+    ok;
+pull_git(App, Url, {tag, TagRev}) ->
     %% unless someone moved the tag we do not need to pull re-fetch
-    io:format("not pulling tags yet, ~s ~p / ~p\n", [App,Url,TagRev]),
+    Res = os:cmd("git pull -q origin --tags "++ TagRev),
+    result(Res, App, Url, TagRev),
+    %%io:format("not pulling tags yet, ~s ~p / ~p\n", [App,Url,TagRev]),
     ok.
 
+result(Res, App, Url, Extra) ->
+    case Res of
+	"Already up-to-date.\n" ->
+	    %% Can not happen with option -q ??
+	    io:format("~s:~s ~s up to date\n", [App, Extra, Url]);
+	"" ->
+	    io:format("~s:~s ~p pulled\n", [App, Extra, Url]);
+	Info ->
+	    io:format("repo ~s:~s ~s\n~s\n", [App, Extra, Url, Info])
+    end.
     
 %% Get the deps dir relative current directory
 deps_dir(RebarOpts,"") ->
