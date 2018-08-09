@@ -13,6 +13,23 @@
 %% -define(dbg(F,A), io:format((F),(A))).
 -define(dbg(F,A), ok).
 
+-ifdef(OTP_RELEASE).
+-if(?OTP_RELEASE >= 21).
+%%-warning("otp_release_21").
+-define(TRY_ERROR_CLAUSE(Reason,Trace),
+	error:Reason:Trace ->).
+-else.
+%%-warning("otp_release_20.3 or more?").
+-define(TRY_ERROR_CLAUSE(Reason,Trace), 
+	error:Reason -> Trace = erlang:get_stacktrace(),).
+-endif.
+-else.
+%%-warning("otp_release_20 or less").
+-define(TRY_ERROR_CLAUSE(Reason,Trace), 
+	error:Reason -> Trace = erlang:get_stacktrace(),).
+-endif.
+
+
 %% find either Makefile/makefile or rebar.config upwards from current
 %% directory.
 %% if Makefile/makefile is found then "make" is called
@@ -79,9 +96,9 @@ pull(Dir) ->
 	Pulled ->
 	    io:format("~w repo's pulled\n", [dict:size(Pulled)])
     catch
-	error:Reason ->
+	?TRY_ERROR_CLAUSE(Reason,Trace)
 	    io:format("pull crashed ~p\n~p\n", 
-		      [Reason, erlang:get_stacktrace()]),
+		      [Reason, Trace]),
 	    {error,Reason}
     after
 	file:set_cwd(Dir0)
