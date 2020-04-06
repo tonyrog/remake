@@ -10,6 +10,8 @@
 
 -mode(compile).
 
+-define(REBAR, "rebar3").
+
 %% -define(dbg(F,A), io:format((F),(A))).
 -define(dbg(F,A), ok).
 
@@ -68,11 +70,11 @@ make(Args) ->
         Env = [{"LANG", "C"}],
         case Args of
         [] ->
-		    run(Dir1, reldir(Dir0, Dir1), "rebar", ["compile"], Env);
+            run(Dir1, reldir(Dir0, Dir1), ?REBAR, ["compile"], Env);
         ["pull"] ->
             pull(Dir1);
         _ ->
-		    run(Dir1, reldir(Dir0, Dir1), "rebar", Args, Env)
+            run(Dir1, reldir(Dir0, Dir1), ?REBAR, Args, Env)
         end;
     {make, Dir1} ->
         Env = [{"LANG", "C"}],
