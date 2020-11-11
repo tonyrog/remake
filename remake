@@ -69,7 +69,7 @@ make(Args) ->
             io:format("nothing to remake\n"),
             halt(0);
         {rebar, Dir1} ->
-            Env = [{"LANG", "C"}],
+            Env = env(),
             case Args of
                 [] ->
                     run(Dir1, reldir(Dir0, Dir1), rebar(), ["compile"], Env);
@@ -79,14 +79,14 @@ make(Args) ->
                     run(Dir1, reldir(Dir0, Dir1), rebar(), Args, Env)
             end;
         {make, Dir1} ->
-            Env = [{"LANG", "C"}],
+            Env = env(),
             run(Dir1, reldir(Dir0, Dir1), make(), Args, Env)
     end.
 
 
 make_cmd(Command, Args) ->
     {ok,Dir0} = file:get_cwd(),
-    Env = [{"LANG", "C"}],
+    Env = env(),
     run(Dir0, <<".">>, Command, Args, Env).
 
 %% recursivly do a git pull in dependencies found
@@ -218,9 +218,9 @@ deps_dir(_RebarOpts, RebarDepsDir) ->
 
 
 run(Dir, Dots, Command, Args, Env) ->
-    %% io:format("# run '~s' in directory ~s: rel=~s, env=~p\n",
-    %% [[Command,lists:map(fun(A) -> [" ",A] end,Args)],
-    %% Dir, Dots, Env]),
+    io:format("# run '~s' in directory ~s: rel=~s, env=~p\n",
+    [[Command,lists:map(fun(A) -> [" ",A] end,Args)],
+     Dir, Dots, Env]),
     case os:find_executable(Command) of
     false ->
         io:format("remake: '~s' no such command\n", [Command]),
@@ -301,6 +301,9 @@ find_item(Dir, [{W,File}|Fs]) ->
     end;
 find_item(_Dir, []) ->
     false.
+
+env() ->
+    []. % [{"LANG", "C"}].
 
 make() ->
     getenv("MAKE", "make").
