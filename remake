@@ -10,6 +10,8 @@
 
 -mode(compile).
 
+-define(REBAR, "rebar3").
+
 %% -define(dbg(F,A), io:format((F),(A))).
 -define(dbg(F,A), ok).
 
@@ -17,16 +19,16 @@
 -if(?OTP_RELEASE >= 21).
 %%-warning("otp_release_21").
 -define(TRY_ERROR_CLAUSE(Reason,Trace),
-	error:Reason:Trace ->).
+    error:Reason:Trace ->).
 -else.
 %%-warning("otp_release_20.3 or more?").
--define(TRY_ERROR_CLAUSE(Reason,Trace), 
-	error:Reason -> Trace = erlang:get_stacktrace(),).
+-define(TRY_ERROR_CLAUSE(Reason,Trace),
+    error:Reason -> Trace = erlang:get_stacktrace(),).
 -endif.
 -else.
 %%-warning("otp_release_20 or less").
--define(TRY_ERROR_CLAUSE(Reason,Trace), 
-	error:Reason -> Trace = erlang:get_stacktrace(),).
+-define(TRY_ERROR_CLAUSE(Reason,Trace),
+    error:Reason -> Trace = erlang:get_stacktrace(),).
 -endif.
 
 
@@ -39,14 +41,14 @@
 
 main([File]) ->
     case filename:extension(File) of
-	".c" ->
-	    make_cmd("gcc", ["-o", filename:basename(File, ".c"),File]);
-	".cc" ->
-	    make_cmd("gcc", ["-o", filename:basename(File, ".cc"),File]);
-	".erl" ->
-	    make_cmd("erlc", [File]);
-	_ ->
-	    make([File])
+    ".c" ->
+        make_cmd(cc(), ["-o", filename:basename(File, ".c"),File]);
+    ".cc" ->
+        make_cmd(cc(), ["-o", filename:basename(File, ".cc"),File]);
+    ".erl" ->
+        make_cmd(erlc(), [File]);
+    _ ->
+        make([File])
     end;
 main(Args) ->
     make(Args).
@@ -56,33 +58,35 @@ make(Args) ->
     Roots = [os:getenv("HOME"), "/"],
     %% Maybe change this to first find rebar up the tree,
     %% then if fail start looking for makefiles?
-    case find_first(Dir0, Roots,
-		    [{rebar,"rebar.config"},
-		     {make,"Makefile"},
-		     {make,"makefile"}
-		    ]) of
-	false ->
-	    io:format("nothing to remake\n"),
-	    halt(0);
-	{rebar, Dir1} ->
-	    Env = [{"LANG", "C"}],
-	    case Args of
-		[] ->
-		    run(Dir1, reldir(Dir0, Dir1), "rebar", ["compile"], Env);
-		["pull"] ->
-		    pull(Dir1);
-		_ ->
-		    run(Dir1, reldir(Dir0, Dir1), "rebar", Args, Env)
-	    end;
-	{make, Dir1} ->
-	    Env = [{"LANG", "C"}],
-	    run(Dir1, reldir(Dir0, Dir1), "make", Args, Env)
+    case
+        find_first(Dir0, Roots,
+                   [{make,"Makefile"},
+                    {rebar,"rebar.config"},
+                    {make,"makefile"}
+                   ])
+    of
+        false ->
+            io:format("nothing to remake\n"),
+            halt(0);
+        {rebar, Dir1} ->
+            Env = env(),
+            case Args of
+                [] ->
+                    run(Dir1, reldir(Dir0, Dir1), rebar(), ["compile"], Env);
+                ["pull"] ->
+                    pull(Dir1);
+                _ ->
+                    run(Dir1, reldir(Dir0, Dir1), rebar(), Args, Env)
+            end;
+        {make, Dir1} ->
+            Env = env(),
+            run(Dir1, reldir(Dir0, Dir1), make(), Args, Env)
     end.
 
 
 make_cmd(Command, Args) ->
     {ok,Dir0} = file:get_cwd(),
-    Env = [{"LANG", "C"}],
+    Env = env(),
     run(Dir0, <<".">>, Command, Args, Env).
 
 %% recursivly do a git pull in dependencies found
@@ -93,34 +97,34 @@ pull(Dir) ->
     %% pull current repo first
     pull_git(filename:basename(Dir), "current", {branch,"HEAD"}),
     try pull("", dict:new()) of
-	Pulled ->
-	    io:format("~w repo's pulled\n", [dict:size(Pulled)])
+    Pulled ->
+        io:format("~w repo's pulled\n", [dict:size(Pulled)])
     catch
-	?TRY_ERROR_CLAUSE(Reason,Trace)
-	    io:format("pull crashed ~p\n~p\n", 
-		      [Reason, Trace]),
-	    {error,Reason}
+    ?TRY_ERROR_CLAUSE(Reason,Trace)
+        io:format("pull crashed ~p\n~p\n",
+              [Reason, Trace]),
+        {error,Reason}
     after
-	file:set_cwd(Dir0)
+    file:set_cwd(Dir0)
     end.
 
-%% pull rebar.config deps from current directory	
+%% pull rebar.config deps from current directory
 pull(DepsDir0, Pulled) ->
     case file:consult("rebar.config") of
-	{ok,RebarOpts} ->
-	    case lists:keyfind(deps, 1, RebarOpts) of
-		false ->
-		    Pulled;
-		{deps,Deps} ->
-		    RebarDepsDir = deps_dir(RebarOpts,DepsDir0),
-		    pull_deps(Deps, RebarDepsDir, Pulled)
-	    end;
-	{error,enoent} -> %% not a rebar project?
-	    Pulled;
-	_Error ->
-	    {ok,Dir} = file:get_cwd(),
-	    io:format("remake: consult error ~p in dir ~s\n", [_Error, Dir]),
-	    Pulled
+    {ok,RebarOpts} ->
+        case lists:keyfind(deps, 1, RebarOpts) of
+        false ->
+            Pulled;
+        {deps,Deps} ->
+            RebarDepsDir = deps_dir(RebarOpts,DepsDir0),
+            pull_deps(Deps, RebarDepsDir, Pulled)
+        end;
+    {error,enoent} -> %% not a rebar project?
+        Pulled;
+    _Error ->
+        {ok,Dir} = file:get_cwd(),
+        io:format("remake: consult error ~p in dir ~s\n", [_Error, Dir]),
+        Pulled
     end.
 
 pull_deps([Dep|Deps], RebarDepsDir, Pulled) ->
@@ -133,10 +137,10 @@ pulldep(App, _RebarDepsDir, Pulled) when is_atom(App) ->
     Pulled;
 pulldep({App,_Version}, _RebarDepsDir, Pulled) when is_atom(App) ->
     Pulled;
-pulldep({App,_Version,Repo}, RebarDepsDir, Pulled) 
+pulldep({App,_Version,Repo}, RebarDepsDir, Pulled)
   when is_atom(App) ->
     pulldep_repo(App, Repo, RebarDepsDir, Pulled);
-pulldep({App,_Version,Repo,_Opts}, RebarDepsDir, Pulled) 
+pulldep({App,_Version,Repo,_Opts}, RebarDepsDir, Pulled)
   when is_atom(App) ->
     pulldep_repo(App, Repo, RebarDepsDir, Pulled);
 pulldep(_Dep, _RebarDepdsDir, Pulled) ->
@@ -145,21 +149,21 @@ pulldep(_Dep, _RebarDepdsDir, Pulled) ->
 
 pulldep_repo(App, Repo, DepsDir, Pulled) ->
     case dict:find(App, Pulled) of
-	{ok,_Dir} ->
-	    ?dbg("repo ~s@~s already pulled\n", [App,_Dir]),
-	    Pulled;
-	error ->
-	    Dir = filename:join(DepsDir, App),
-	    case filelib:is_dir(Dir) of
-		true ->
-		    %% io:format("pulling repo ~s@~s\n", [App,Dir]),
-		    file:set_cwd(Dir),
-		    pull_repo(App, Repo),  %% try pull
-		    Pulled1 = dict:store(App,Dir,Pulled),
-		    pull(DepsDir, Pulled1); %% now pull recursive
-		false ->  %% not cloned/get-deps?
-		    Pulled
-	    end
+    {ok,_Dir} ->
+        ?dbg("repo ~s@~s already pulled\n", [App,_Dir]),
+        Pulled;
+    error ->
+        Dir = filename:join(DepsDir, App),
+        case filelib:is_dir(Dir) of
+        true ->
+            %% io:format("pulling repo ~s@~s\n", [App,Dir]),
+            file:set_cwd(Dir),
+            pull_repo(App, Repo),  %% try pull
+            Pulled1 = dict:store(App,Dir,Pulled),
+            pull(DepsDir, Pulled1); %% now pull recursive
+        false ->  %% not cloned/get-deps?
+            Pulled
+        end
     end.
 
 pull_repo(App, {git, _Url, BranchTag}) ->
@@ -170,7 +174,7 @@ pull_repo(App, Repo) ->
     io:format("can not pull none git yet ~s - ~p\n", [App,Repo]),
     ok.
 
-%% Just do a simple git pull for now! 
+%% Just do a simple git pull for now!
 %% this may not work with get-deps?
 pull_git(App, Url, {branch,Branch}) ->
     Res = os:cmd("git pull -q origin --tags " ++ Branch),
@@ -185,78 +189,78 @@ pull_git(App, Url, {tag, TagRev}) ->
 
 result(Res, App, Url, Extra) ->
     case Res of
-	"Already up-to-date.\n" ->
-	    %% Can not happen with option -q ??
-	    io:format("~s:~s ~s up to date\n", [App, Extra, Url]);
-	"" ->
-	    io:format("~s:~s ~p pulled\n", [App, Extra, Url]);
-	Info ->
-	    io:format("repo ~s:~s ~s\n~s\n", [App, Extra, Url, Info])
+    "Already up-to-date.\n" ->
+        %% Can not happen with option -q ??
+        io:format("~s:~s ~s up to date\n", [App, Extra, Url]);
+    "" ->
+        io:format("~s:~s ~p pulled\n", [App, Extra, Url]);
+    Info ->
+        io:format("repo ~s:~s ~s\n~s\n", [App, Extra, Url, Info])
     end.
-    
+
 %% Get the deps dir relative current directory
 deps_dir(RebarOpts,"") ->
     case lists:keyfind(deps_dir, 1, RebarOpts) of
-	false ->
-	    DepsDir = os:getenv("REBAR_DEPS_DIR"),
-	    if DepsDir =:= ""; DepsDir =:= false ->
-		    {ok,Dir} = file:get_cwd(),
-		    filename:join(Dir, "deps");
-	       true ->
-		    DepsDir
-	    end;
-	{deps_dir, Dir1} ->
-	    {ok,Dir} = file:get_cwd(),
-	    filename:join(Dir, Dir1)
+    false ->
+        DepsDir = os:getenv("REBAR_DEPS_DIR"),
+        if DepsDir =:= ""; DepsDir =:= false ->
+            {ok,Dir} = file:get_cwd(),
+            filename:join(Dir, "deps");
+           true ->
+            DepsDir
+        end;
+    {deps_dir, Dir1} ->
+        {ok,Dir} = file:get_cwd(),
+        filename:join(Dir, Dir1)
     end;
 deps_dir(_RebarOpts, RebarDepsDir) ->
     RebarDepsDir.
 
 
 run(Dir, Dots, Command, Args, Env) ->
-    %% io:format("# run '~s' in directory ~s: rel=~s, env=~p\n", 
-    %% [[Command,lists:map(fun(A) -> [" ",A] end,Args)],
-    %% Dir, Dots, Env]),
+    io:format("# run '~s' in directory ~s: rel=~s, env=~p\n",
+    [[Command,lists:map(fun(A) -> [" ",A] end,Args)],
+     Dir, Dots, Env]),
     case os:find_executable(Command) of
-	false ->
-	    io:format("remake: '~s' no such command\n", [Command]),
-	    halt(1);
-	Exec ->
-	    Port = open_port({spawn_executable, Exec},
-			     [{args, Args},{cd,Dir}, binary,
-			      {env, Env}, {line, 1024},
-			      stderr_to_stdout, exit_status]),
-	    run_result(Dots,Port)
+    false ->
+        io:format("remake: '~s' no such command\n", [Command]),
+        halt(1);
+    Exec ->
+        Port = open_port({spawn_executable, Exec},
+                 [{args, Args},{cd,Dir}, binary,
+                  {env, Env}, {line, 1024},
+                  stderr_to_stdout, exit_status]),
+        run_result(Dots,Port)
     end.
 
 run_result(Dots,Port) ->
     receive
-	{Port, {exit_status,Status}} ->
-	    %% io:format("Port exit status = ~p\n", [Status]),
-	    halt(Status);
-	{Port, {data,{Eol, Data}}} when Eol =:= eol; Eol =:= noeol ->
-	    if Dots =:= <<".">> ->
-		    io:put_chars([Data,"\n"]),
-		    run_result(Dots,Port);
-	       true ->
-		    case Data of
-			<<$/,_>> ->
-			    io:put_chars([Data,"\n"]),
-			    run_result(Dots,Port);
-			_ ->
-			    io:put_chars([Dots,"/",Data,"\n"]),
-			    run_result(Dots,Port)
-		    end
-		    %% io:format("result: [~s] dots=~p\n", [Data, Dots]),
-		    %% fixme: this wont work for broken last line
-		    %% Data1 = re:replace(Data,"([\\w/.]+):(\\d+):", 
-		    %%		    %% <<Dots/binary, "/\\1:\\2:">>,
-		    %%  [global]),
-		    %% io:put_chars([Data1,"\n"])
-	    end;
-	Other ->
-	    io:format("remake for other: ~p\n", [Other]),
-	    run_result(Dots,Port)
+    {Port, {exit_status,Status}} ->
+        %% io:format("Port exit status = ~p\n", [Status]),
+        halt(Status);
+    {Port, {data,{Eol, Data}}} when Eol =:= eol; Eol =:= noeol ->
+        if Dots =:= <<".">> ->
+            io:put_chars([Data,"\n"]),
+            run_result(Dots,Port);
+           true ->
+            case Data of
+            <<$/,_>> ->
+                io:put_chars([Data,"\n"]),
+                run_result(Dots,Port);
+            _ ->
+                io:put_chars([Dots,"/",Data,"\n"]),
+                run_result(Dots,Port)
+            end
+            %% io:format("result: [~s] dots=~p\n", [Data, Dots]),
+            %% fixme: this wont work for broken last line
+            %% Data1 = re:replace(Data,"([\\w/.]+):(\\d+):",
+            %%            %% <<Dots/binary, "/\\1:\\2:">>,
+            %%  [global]),
+            %% io:put_chars([Data1,"\n"])
+        end;
+    Other ->
+        io:format("remake for other: ~p\n", [Other]),
+        run_result(Dots,Port)
     end.
 
 %% Dir0 is current directory while Dir1 must be a parent diretory
@@ -266,34 +270,57 @@ reldir(Dir0, Dir0) ->
     <<".">>;
 reldir(Dir0, Dir1) ->
     case lists:prefix(Dir1, Dir0) of
-	true ->
-	    %% produce needed amount of ".."
-	    Dir2 = lists:nthtail(length(Dir1)+1, Dir0),
-	    N = length(filename:split(Dir2)),
-	    list_to_binary(filename:join(lists:duplicate(N, "..")));
-	false ->
-	    <<".">>
+    true ->
+        %% produce needed amount of ".."
+        Dir2 = lists:nthtail(length(Dir1)+1, Dir0),
+        N = length(filename:split(Dir2)),
+        list_to_binary(filename:join(lists:duplicate(N, "..")));
+    false ->
+        <<".">>
     end.
 
 
 find_first(Dir, Roots, List) ->
     case find_item(Dir, List) of
-	false ->
-	    Parent = filename:dirname(Dir),
-	    case lists:member(Parent, Roots) of
-		true -> false;
-		false -> find_first(Parent, Roots, List)
-	    end;
-	Item ->
-	    Item
+    false ->
+        Parent = filename:dirname(Dir),
+        case lists:member(Parent, Roots) of
+        true -> false;
+        false -> find_first(Parent, Roots, List)
+        end;
+    Item ->
+        Item
     end.
 
 find_item(Dir, [{W,File}|Fs]) ->
     case filelib:is_regular(filename:join(Dir, File)) of
-	true ->
-	    {W,Dir};
-	false ->
-	    find_item(Dir, Fs)
+    true ->
+        {W,Dir};
+    false ->
+        find_item(Dir, Fs)
     end;
 find_item(_Dir, []) ->
     false.
+
+env() ->
+    []. % [{"LANG", "C"}].
+
+make() ->
+    getenv("MAKE", "make").
+
+rebar() ->
+    getenv("REBAR", ?REBAR).
+
+cc() ->
+    getenv("CC", "gcc").
+
+erlc() ->
+    getenv("ERLC", "erlc").
+
+getenv(Name, Default) ->
+    case os:getenv(Name) of
+        false ->
+            Default;
+        Value ->
+            Value
+    end.
