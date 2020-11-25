@@ -1,0 +1,6 @@
+#@BEGIN-C_SRC-DEFAULT-RULES@
+ERL=$(shell readlink -f `which erl`)
+ERL_TOP=$(ERL:%/bin/erl=%)
+OS=$(shell uname -s)
+CFLAGS=-MMD -MF .$<.d -I$(ERL_TOP)/usr/include
+#@END-C_SRC-DEFAULT-RULES@
