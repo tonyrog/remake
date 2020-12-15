@@ -2,5 +2,24 @@
 ERL=$(shell readlink -f `which erl`)
 ERL_TOP=$(ERL:%/bin/erl=%)
 OS=$(shell uname -s)
-CFLAGS=-MMD -MF .$<.d -I$(ERL_TOP)/usr/include
+CFLAGS=-MMD -MF -MF .$<.d -I$(ERL_TOP)/usr/include
 #@END-C_SRC-DEFAULT-RULES@
+
+APP=app
+CFLAGS+=-std=c99 -Wall -O3
+LDFLAGS+=-shared
+
+OBJS =
+LIBS = 
+
+all: ../priv/$(APP)_nif.so
+
+../priv/$(APP)_nif.so: $(OBJS)
+	$(CC) $(LDFLAGS) $(OBJS) $(LIBS) -o ../priv/$(APP)_nif.so
+
+%.o:	%.c
+	$(CC) $(CFLAGS) -c -fPIC $<
+
+.%.d:	;
+
+-include .*.d
